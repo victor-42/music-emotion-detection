@@ -7,11 +7,12 @@ import torch
 import librosa as lr
 import warnings
 
+
 class WindowedAudioDataset(Dataset):
     def __init__(self, arousal_file, valence_file, audio_dir,
                  window_length=20.0, window_hopsize=15.0,
                  sampling_rate=44100, max_length=45.0, mfcc_features=30,
-                 transform=None, target_transform=None):
+                 feature_hop_len=1764, feature_window_size=4410):
         self.mfcc_features = mfcc_features
         self.audio_dir = audio_dir
         self.sr = sampling_rate
@@ -21,19 +22,19 @@ class WindowedAudioDataset(Dataset):
         self.window_length = window_length
         self.annotation_start = 15.0
         self.annotation_end = 44.0
-        self.feature_hop_len = 1764
+        self.feature_hop_len = feature_hop_len
         self.window_hopsize = window_hopsize
-
+        self.feature_window_size = feature_window_size
         self.mfccs = []
         self.tempograms = []
         self.energies = []
 
-        #self.target_transform = target_transform
-        #self.transform = transform
+        # self.target_transform = target_transform
+        # self.transform = transform
 
         self.mode = 'mfcc'
 
-    def generate_x_y(self, process_view=True):
+    def generate_x_y(self, worker: int = 16):
         self.file_names = []
         self.labels = []
         print('Retrieving File Names and Labels...')
@@ -52,7 +53,7 @@ class WindowedAudioDataset(Dataset):
 
         print('Loading Files and Features...')
         warnings.filterwarnings('ignore', '.*audioread.*')
-        #self.samples = []
+        # self.samples = []
 
         n_per_second = int(self.sr / self.feature_hop_len)
 
@@ -60,7 +61,8 @@ class WindowedAudioDataset(Dataset):
         self.tempograms = []
         self.energies = []
 
-        res = Parallel(n_jobs=16, backend='multiprocessing')(delayed(self.load_sample)(f) for f in tqdm(self.file_names))
+        res = Parallel(n_jobs=worker, backend='multiprocessing')(
+            delayed(self.load_sample)(f) for f in tqdm(self.file_names))
 
         range_max = int(self.annotation_end - self.window_length / 2)
         for i in tqdm(range(len(self.file_names))):
@@ -74,7 +76,7 @@ class WindowedAudioDataset(Dataset):
         self.mfccs = np.array(self.mfccs)
         self.tempograms = np.array(self.tempograms)
         self.energies = np.array(self.energies)
-        #self.samples = np.array(self.samples)
+        # self.samples = np.array(self.samples)
         print('Done!')
         del res
 
@@ -83,9 +85,10 @@ class WindowedAudioDataset(Dataset):
         sample = lr.load(self.audio_dir + file_name, sr=self.sr,
                          duration=self.max_length)[0]
 
-        #self.samples.append(sample)
-        S = lr.stft(y=sample, n_fft=4410, hop_length=self.feature_hop_len)
-        energy = lr.feature.rms(S=lr.magphase(S)[0], frame_length=4410, hop_length=self.feature_hop_len)[0]
+        # self.samples.append(sample)
+        S = lr.stft(y=sample, n_fft=self.feature_window_size, hop_length=self.feature_hop_len)
+        energy = \
+        lr.feature.rms(S=lr.magphase(S)[0], frame_length=self.feature_window_size, hop_length=self.feature_hop_len)[0]
 
         tempogram = lr.feature.tempogram(y=sample, sr=self.sr, hop_length=self.feature_hop_len).transpose()
 
@@ -101,4 +104,8 @@ class WindowedAudioDataset(Dataset):
         if self.mode == 'mfcc':
             return torch.Tensor(self.mfccs[idx].transpose()), torch.Tensor(self.labels[idx])
         elif self.mode == 'energy-tempo':
-            return [torch.Tensor(self.energies[idx]), torch.Tensor(self.tempograms[idx])], torch.Tensor(self.labels[idx])
+            return [torch.Tensor(self.energies[idx]), torch.Tensor(self.tempograms[idx])], torch.Tensor(
+                self.labels[idx])
+        elif self.mode == 'all':
+            return [torch.Tensor(self.mfccs[idx].transpose()), torch.Tensor(self.energies[idx]),
+                    torch.Tensor(self.tempograms[idx])], torch.Tensor(self.labels[idx])
