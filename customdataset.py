@@ -64,7 +64,7 @@ class WindowedAudioDataset(Dataset):
                 self.file_names.append(str(int(row['song_id'])) + '.mp3')
                 max_range -= 1
                 for start_index in range(int(self.annotation_start * 1000), int((self.annotation_end-self.window_length) * 1000),
-                                         int(self.window_length * 1000)):
+                                         int(self.window_hopsize * 1000)):
                     label = []
                     for point in range(start_index, int(start_index + self.window_length * 1000), 500):
                         label_name = 'sample_' + str(point) + 'ms'
@@ -99,11 +99,11 @@ class WindowedAudioDataset(Dataset):
 
         if self.sequence_annotation:
             for i in tqdm(range(len(self.file_names))):
-                for start_index in range(int(self.annotation_start), int(self.annotation_end-self.window_length), int(self.window_length)):
+                for start_index in range(int(self.annotation_start), int(self.annotation_end-self.window_length), int(self.window_hopsize)):
                     start = int(start_index * n_per_second)
                     end = int((start_index + self.window_length) * n_per_second)
                     self.mfccs.append(res[i][0][start:end])
-                    self.energies.append(res[i][2][start:end])
+                    self.energies.append(res[i][1][start:end])
                     self.tempograms.append(res[i][2][start:end])
         else:
             range_max = int(self.annotation_end - self.window_length / 2)
