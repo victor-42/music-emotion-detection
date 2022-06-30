@@ -153,3 +153,4 @@ class WindowedAudioDataset(Dataset):
                     torch.Tensor(self.tempograms[idx])], torch.Tensor(self.labels[idx])
         elif self.mode == 'mfcc_last_sequence':
             return[torch.Tensor(self.mfccs[idx].transpose()), torch.Tensor(self.labels[idx, -1])]
+
